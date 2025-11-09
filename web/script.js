@@ -101,15 +101,21 @@ async function handleLogin(e) {
     console.log('Username:', username);
     
     try {
+        console.log('Sending login request to:', `${MASTER_URL}/login`);
         const response = await fetch(`${MASTER_URL}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
         
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.success) {
+            console.log('Login successful! Role:', data.role);
             currentUser = username;
             currentRole = data.role;
             currentToken = data.token;
@@ -118,11 +124,14 @@ async function handleLogin(e) {
             sessionStorage.setItem('gfs_user', username);
             sessionStorage.setItem('gfs_role', data.role);
             
+            console.log('Calling showDashboard...');
             showDashboard();
         } else {
+            console.log('Login failed:', data.error);
             errorEl.textContent = data.error || 'Login failed';
         }
     } catch (error) {
+        console.error('Login error (exception):', error);
         errorEl.textContent = 'Connection error. Please ensure the system is running.';
         console.error('Login error:', error);
     }
