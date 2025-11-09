@@ -4,6 +4,7 @@ import time
 import threading
 import hashlib
 import secrets
+import socketserver
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
@@ -29,6 +30,11 @@ session_lock = threading.Lock()
 # Initialize data directory
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# Create a threaded HTTP server class
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
+    daemon_threads = True
+
 def load_data():
     """Load metadata, users, and sessions from disk"""
     global metadata, users, sessions
@@ -41,14 +47,26 @@ def load_data():
     # Load users or create defaults
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
-            users = json.load(f)
+            users_data = json.load(f)
+            # Check if the data is in the new format (with password hash)
+            if "admin" in users_data and "password" in users_data["admin"]:
+                users.clear()
+                users.update(users_data)
+            else:
+                # This is the old format, so we need to hash the passwords
+                for username, password in users_data.items():
+                    users[username] = {
+                        "password": hashlib.sha256(password.encode()).hexdigest(),
+                        "role": "admin" if username == "admin" else "user",
+                        "created_by": "system"
+                    }
+                save_users()
     else:
-        users = {
-            "admin": {
-                "password": hashlib.sha256("admin123".encode()).hexdigest(),
-                "role": "admin",
-                "created_by": "system"
-            }
+        # Create a default admin user if the file doesn't exist
+        users["admin"] = {
+            "password": hashlib.sha256("admin123".encode()).hexdigest(),
+            "role": "admin",
+            "created_by": "system"
         }
         save_users()
     
@@ -87,7 +105,9 @@ def create_session(username, role):
             "role": role,
             "expiry": expiry
         }
-        save_sessions()
+        # Save directly without acquiring lock again
+        with open(SESSIONS_FILE, 'w') as f:
+            json.dump(sessions, f, indent=2)
     
     return token
 
@@ -102,7 +122,9 @@ def validate_session(token):
         
         if datetime.now() > expiry:
             del sessions[token]
-            save_sessions()
+            # Save directly without acquiring lock again
+            with open(SESSIONS_FILE, 'w') as f:
+                json.dump(sessions, f, indent=2)
             return None
         
         return session
@@ -118,7 +140,9 @@ def clean_expired_sessions():
             del sessions[token]
         
         if expired:
-            save_sessions()
+            # Save directly without acquiring lock again
+            with open(SESSIONS_FILE, 'w') as f:
+                json.dump(sessions, f, indent=2)
 
 def register_chunk_server(server_id, host, port):
     """Register or update a chunk server"""
@@ -280,18 +304,24 @@ class MasterHandler(BaseHTTPRequestHandler):
     
     def _handle_login(self, data):
         """Authenticate user and create session"""
+        print(f"[MASTER] Login request received for user: {data.get('username')}")
         username = data.get("username")
         password = data.get("password")
         
         if not username or not password:
+            print("[MASTER] Login failed: Missing credentials")
             self._set_headers(400)
             self.wfile.write(json.dumps({"success": False, "error": "Missing credentials"}).encode())
             return
         
+        print(f"[MASTER] Hashing password for {username}")
         password_hash = hashlib.sha256(password.encode()).hexdigest()
+        print(f"[MASTER] Checking credentials for {username}")
         
         if username in users and users[username]["password"] == password_hash:
+            print(f"[MASTER] Credentials valid, creating session for {username}")
             token = create_session(username, users[username]["role"])
+            print(f"[MASTER] Session created, sending response")
             
             self._set_headers()
             self.wfile.write(json.dumps({
@@ -300,7 +330,9 @@ class MasterHandler(BaseHTTPRequestHandler):
                 "username": username,
                 "token": token
             }).encode())
+            print(f"[MASTER] Login successful for {username}")
         else:
+            print(f"[MASTER] Login failed: Invalid credentials for {username}")
             self._set_headers(401)
             self.wfile.write(json.dumps({"success": False, "error": "Invalid credentials"}).encode())
     
@@ -312,7 +344,9 @@ class MasterHandler(BaseHTTPRequestHandler):
             with session_lock:
                 if token in sessions:
                     del sessions[token]
-                    save_sessions()
+                    # Save directly without acquiring lock again
+                    with open(SESSIONS_FILE, 'w') as f:
+                        json.dump(sessions, f, indent=2)
         
         self._set_headers()
         self.wfile.write(json.dumps({"success": True}).encode())
@@ -482,8 +516,8 @@ class MasterHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({"logs": logs[-50:]}).encode())
     
     def log_message(self, format, *args):
-        """Suppress default logging"""
-        pass
+        """Log HTTP requests"""
+        print(f"[MASTER] {self.address_string()} - {format % args}")
 
 def main():
     load_data()
@@ -491,9 +525,9 @@ def main():
     # Start heartbeat monitor
     threading.Thread(target=check_heartbeats, daemon=True).start()
     
-    # Start HTTP server
-    server = HTTPServer(('0.0.0.0', 8000), MasterHandler)
-    print("[MASTER] Master Node started on port 8000")
+    # Start HTTP server with threading support
+    server = ThreadedHTTPServer(('0.0.0.0', 8000), MasterHandler)
+    print("[MASTER] Master Node started on port 8000 (threaded)")
     server.serve_forever()
 
 if __name__ == "__main__":

@@ -27,7 +27,8 @@ services:
       - SERVER_ID=chunk_server_1
       - SERVER_PORT=9001
     depends_on:
-      - master
+      master:
+        condition: service_started
     command: python3 -u /app/backend/chunk_server.py
 
   chunk_server_2:
@@ -44,7 +45,8 @@ services:
       - SERVER_ID=chunk_server_2
       - SERVER_PORT=9002
     depends_on:
-      - master
+      master:
+        condition: service_started
     command: python3 -u /app/backend/chunk_server.py
 
   chunk_server_3:
@@ -61,7 +63,8 @@ services:
       - SERVER_ID=chunk_server_3
       - SERVER_PORT=9003
     depends_on:
-      - master
+      master:
+        condition: service_started
     command: python3 -u /app/backend/chunk_server.py
 
   # Client Service
@@ -74,10 +77,14 @@ services:
       - gfs_network
     restart: unless-stopped
     depends_on:
-      - master
-      - chunk_server_1
-      - chunk_server_2
-      - chunk_server_3
+      master:
+        condition: service_started
+      chunk_server_1:
+        condition: service_started
+      chunk_server_2:
+        condition: service_started
+      chunk_server_3:
+        condition: service_started
     command: python3 -u /app/backend/client_script.py
 
   # Web Interface (static)
@@ -92,8 +99,10 @@ services:
       - gfs_network
     restart: unless-stopped
     depends_on:
-      - master
-      - client
+      master:
+        condition: service_started
+      client:
+        condition: service_started
 
 networks:
   gfs_network:
