@@ -46,11 +46,6 @@ function setupEventListeners() {
         dropZone.classList.add('dragover');
     });
     
-    dropZone.addEventListener('click', () => fileInput.click());
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
     dropZone.addEventListener('dragleave', () => {
         dropZone.classList.remove('dragover');
     });
@@ -98,16 +93,29 @@ async function handleLogin(e) {
     const password = document.getElementById('loginPassword').value;
     const errorEl = document.getElementById('loginError');
     
-    console.log('Username:', username);
+    // Clear any previous errors
+    errorEl.textContent = '';
+    
+    console.log('Attempting login for:', username);
     
     try {
+        console.log('Sending request to:', `${MASTER_URL}/login`);
+        
         const response = await fetch(`${MASTER_URL}/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ username, password }),
+            mode: 'cors'
         });
         
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.success) {
             currentUser = username;
@@ -118,13 +126,15 @@ async function handleLogin(e) {
             sessionStorage.setItem('gfs_user', username);
             sessionStorage.setItem('gfs_role', data.role);
             
+            console.log('Login successful, showing dashboard');
             showDashboard();
         } else {
             errorEl.textContent = data.error || 'Login failed';
+            console.error('Login failed:', data.error);
         }
     } catch (error) {
-        errorEl.textContent = 'Connection error. Please ensure the system is running.';
-        console.error('Login error:', error);
+        console.error('Login error details:', error);
+        errorEl.textContent = 'Connection error. Please ensure the backend is running on port 8000.';
     }
 }
 
@@ -148,8 +158,12 @@ async function handleSignup(e) {
     try {
         const response = await fetch(`${MASTER_URL}/signup`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ username, password }),
+            mode: 'cors'
         });
         
         const data = await response.json();
@@ -162,7 +176,7 @@ async function handleSignup(e) {
             errorEl.textContent = data.error || 'Signup failed';
         }
     } catch (error) {
-        errorEl.textContent = 'Connection error. Please ensure the system is running.';
+        errorEl.textContent = 'Connection error. Please ensure the backend is running.';
         console.error('Signup error:', error);
     }
 }
@@ -172,7 +186,8 @@ async function handleLogout() {
         await fetch(`${MASTER_URL}/logout`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: currentToken })
+            body: JSON.stringify({ token: currentToken }),
+            mode: 'cors'
         });
     } catch (error) {
         console.error('Logout error:', error);
@@ -242,8 +257,8 @@ function refreshDashboard() {
 async function loadAdminDashboard() {
     try {
         const [status, users] = await Promise.all([
-            fetch(`${MASTER_URL}/status`).then(r => r.json()),
-            fetch(`${MASTER_URL}/users`).then(r => r.json())
+            fetch(`${MASTER_URL}/status`, { mode: 'cors' }).then(r => r.json()),
+            fetch(`${MASTER_URL}/users`, { mode: 'cors' }).then(r => r.json())
         ]);
         
         updateAdminStats(status, users);
@@ -298,7 +313,8 @@ async function promoteUser(username) {
         const response = await fetch(`${MASTER_URL}/promote_user`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
+            body: JSON.stringify({ username }),
+            mode: 'cors'
         });
         
         const data = await response.json();
@@ -318,7 +334,7 @@ async function promoteUser(username) {
 
 async function loadManagerDashboard() {
     try {
-        const status = await fetch(`${MASTER_URL}/status`).then(r => r.json());
+        const status = await fetch(`${MASTER_URL}/status`, { mode: 'cors' }).then(r => r.json());
         
         updateManagerStats(status);
         updateServersList(status.servers, 'managerServersList', true);
@@ -341,7 +357,7 @@ function updateManagerStats(status) {
 
 async function loadUserDashboard() {
     try {
-        const status = await fetch(`${MASTER_URL}/status`).then(r => r.json());
+        const status = await fetch(`${MASTER_URL}/status`, { mode: 'cors' }).then(r => r.json());
         
         updateUserStats(status);
         updateServersList(status.servers, 'userServersList', false);
@@ -407,7 +423,8 @@ async function simulateFailure(serverId) {
         const response = await fetch(`${MASTER_URL}/simulate_failure`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ server_id: serverId })
+            body: JSON.stringify({ server_id: serverId }),
+            mode: 'cors'
         });
         
         const data = await response.json();
@@ -528,7 +545,8 @@ async function uploadFile(filename, content, isFile, encrypt) {
         const response = await fetch(`${CLIENT_URL}/upload`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            mode: 'cors'
         });
         
         const data = await response.json();
@@ -578,7 +596,8 @@ async function handleAddUser(e) {
                 password,
                 role,
                 created_by: currentUser
-            })
+            }),
+            mode: 'cors'
         });
         
         const data = await response.json();
