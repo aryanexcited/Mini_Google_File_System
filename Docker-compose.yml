@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - master_data:/data/master
+      - ./data/master:/data/master  # Changed to bind mount
     networks:
       - gfs_network
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
     ports:
       - "9001:9001"
     volumes:
-      - chunk1_data:/data/chunks
+      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
     networks:
       - gfs_network
     restart: unless-stopped
@@ -37,7 +37,7 @@ services:
     ports:
       - "9002:9002"
     volumes:
-      - chunk2_data:/data/chunks
+      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
     networks:
       - gfs_network
     restart: unless-stopped
@@ -55,7 +55,7 @@ services:
     ports:
       - "9003:9003"
     volumes:
-      - chunk3_data:/data/chunks
+      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
     networks:
       - gfs_network
     restart: unless-stopped
@@ -107,9 +107,3 @@ services:
 networks:
   gfs_network:
     driver: bridge
-
-volumes:
-  master_data:
-  chunk1_data:
-  chunk2_data:
-  chunk3_data:

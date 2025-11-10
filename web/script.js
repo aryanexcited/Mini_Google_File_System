@@ -6,6 +6,7 @@ let currentUser = null;
 let currentRole = null;
 let currentToken = null;
 let refreshTimer = null;
+let isUploading = false; // Flag to prevent logout during upload
 
 document.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -93,7 +94,6 @@ async function handleLogin(e) {
     const password = document.getElementById('loginPassword').value;
     const errorEl = document.getElementById('loginError');
     
-    // Clear any previous errors
     errorEl.textContent = '';
     
     console.log('Attempting login for:', username);
@@ -113,11 +113,7 @@ async function handleLogin(e) {
         console.log('Response status:', response.status);
         console.log('Response ok:', response.ok);
         
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-        
         const data = await response.json();
-        console.log('Response data:', data);
         console.log('Response data:', data);
         
         if (data.success) {
@@ -188,6 +184,18 @@ async function handleSignup(e) {
 }
 
 async function handleLogout() {
+    // Prevent logout during file upload
+    if (isUploading) {
+        alert('Please wait for the current upload to complete before logging out.');
+        return;
+    }
+
+    // Clear the refresh timer first
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+
     try {
         await fetch(`${MASTER_URL}/logout`, {
             method: 'POST',
@@ -203,11 +211,6 @@ async function handleLogout() {
     currentRole = null;
     currentToken = null;
     sessionStorage.clear();
-    
-    if (refreshTimer) {
-        clearInterval(refreshTimer);
-        refreshTimer = null;
-    }
     
     showAuth();
 }
@@ -249,6 +252,9 @@ function showDashboard() {
 }
 
 function refreshDashboard() {
+    // Don't refresh during upload to avoid conflicts
+    if (isUploading) return;
+
     if (currentRole === 'admin') {
         loadAdminDashboard();
     } else if (currentRole === 'manager') {
@@ -305,7 +311,11 @@ function updateUsersList(users) {
                 <div>${user.role}</div>
                 <div>${user.created_by}</div>
                 <div>
-                    ${user.role === 'user' ? `<button class="btn-primary" onclick="promoteUser('${user.username}')">Promote to Manager</button>` : '-'}
+                    ${user.role === 'user' ? 
+                        `<button class="btn-primary" onclick="promoteUser('${user.username}')">Promote to Manager</button>` : 
+                        user.role === 'manager' ? 
+                        `<button class="btn-secondary" onclick="demoteUser('${user.username}')">Demote to User</button>` : 
+                        '-'}
                 </div>
             </div>
         `;
@@ -333,6 +343,32 @@ async function promoteUser(username) {
     } catch (error) {
         console.error('Error promoting user:', error);
         alert('Error promoting user');
+    }
+}
+
+async function demoteUser(username) {
+    if (!confirm(`Are you sure you want to demote ${username} back to User?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${MASTER_URL}/demote_user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username }),
+            mode: 'cors'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            alert(`User ${username} demoted to User`);
+            loadAdminDashboard();
+        } else {
+            alert('Failed to demote user');
+        }
+    } catch (error) {
+        console.error('Error demoting user:', error);
+        alert('Error demoting user');
     }
 }
 
@@ -365,9 +401,26 @@ async function loadUserDashboard() {
     try {
         const status = await fetch(`${MASTER_URL}/status`, { mode: 'cors' }).then(r => r.json());
         
+        console.log('[DEBUG] User Dashboard - Current User:', currentUser);
+        console.log('[DEBUG] All Files:', status.files);
+        
         updateUserStats(status);
         updateServersList(status.servers, 'userServersList', false);
-        updateFilesList(status.files, 'userFilesList');
+        
+        // Filter files for current user
+        const userFiles = {};
+        for (const [filename, info] of Object.entries(status.files)) {
+            console.log(`[DEBUG] Checking file: ${filename}, uploaded_by: ${info.uploaded_by}, current user: ${currentUser}`);
+            if (info.uploaded_by === currentUser) {
+                userFiles[filename] = info;
+                console.log(`[DEBUG] Added file ${filename} to user files`);
+            }
+        }
+        
+        console.log('[DEBUG] User Files:', userFiles);
+        console.log('[DEBUG] User Files Count:', Object.keys(userFiles).length);
+        
+        updateFilesList(userFiles, 'userFilesList');
     } catch (error) {
         console.error('Error loading user dashboard:', error);
     }
@@ -375,10 +428,12 @@ async function loadUserDashboard() {
 
 function updateUserStats(status) {
     const activeCount = Object.values(status.servers).filter(s => s.status === 'active').length;
-    const fileCount = Object.keys(status.files).length;
+    
+    // Count only user's files
+    const userFileCount = Object.values(status.files).filter(f => f.uploaded_by === currentUser).length;
     
     document.getElementById('userActiveServers').textContent = `${activeCount}/${Object.keys(status.servers).length}`;
-    document.getElementById('userTotalFiles').textContent = fileCount;
+    document.getElementById('userTotalFiles').textContent = userFileCount;
     document.getElementById('userFaultTolerance').textContent = `${status.fault_tolerance}%`;
 }
 
@@ -435,7 +490,7 @@ async function simulateFailure(serverId) {
         
         const data = await response.json();
         if (data.success) {
-            alert(`Server ${serverId} marked as failed. Re-replication in progress...`);
+            alert(`Server ${serverId} marked as failed.`);
             refreshDashboard();
         } else {
             alert('Failed to simulate failure');
@@ -457,10 +512,12 @@ function updateFilesList(files, containerId) {
     let html = '';
     
     Object.entries(files).forEach(([filename, info]) => {
+        const uploadedBy = info.uploaded_by || 'unknown';
         html += `
             <div class="file-card">
                 <div style="font-weight: 600; margin-bottom: 10px;">📄 ${filename}</div>
                 <div style="color: #666; font-size: 14px;">Uploaded: ${new Date(info.upload_time).toLocaleString()}</div>
+                <div style="color: #666; font-size: 14px;">Uploaded by: ${uploadedBy}</div>
                 <div style="color: #666; font-size: 14px; margin-bottom: 10px;">Chunks: ${info.chunks.length}</div>
                 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
                     ${info.chunks.map(chunk => `<span style="background: #667eea; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px;">${chunk}</span>`).join('')}
@@ -496,6 +553,11 @@ async function handleManualUpload() {
     const filename = document.getElementById('fileName').value.trim();
     const content = document.getElementById('fileContent').value;
     
+    console.log('[DEBUG] Manual upload triggered');
+    console.log('[DEBUG] Filename:', filename);
+    console.log('[DEBUG] Content length:', content.length);
+    console.log('[DEBUG] Current user:', currentUser);
+    
     if (!filename) {
         alert('Please enter a filename');
         return;
@@ -507,6 +569,8 @@ async function handleManualUpload() {
     }
     
     const encrypt = document.getElementById('encryptionEnabled').checked;
+    console.log('[DEBUG] Encryption enabled:', encrypt);
+    
     await uploadFile(filename, content, false, encrypt);
 }
 
@@ -527,14 +591,20 @@ async function uploadFiles(files) {
 }
 
 async function uploadFile(filename, content, isFile, encrypt) {
+    isUploading = true; // Set upload flag
     const progressContainer = document.getElementById('uploadProgress');
     progressContainer.innerHTML = `<div class="progress-label loading">Uploading ${filename}...</div>`;
+    
+    console.log('[DEBUG] Starting upload:', filename, 'User:', currentUser);
     
     try {
         let payload = {
             filename: filename,
-            encrypt: encrypt
+            encrypt: encrypt,
+            uploaded_by: currentUser // Add user info
         };
+        
+        console.log('[DEBUG] Upload payload:', payload);
         
         if (isFile) {
             const reader = new FileReader();
@@ -556,6 +626,7 @@ async function uploadFile(filename, content, isFile, encrypt) {
         });
         
         const data = await response.json();
+        console.log('[DEBUG] Upload response:', data);
         
         if (data.success) {
             const encryptionStatus = data.encrypted ? ' (Encrypted 🔒)' : '';
@@ -572,15 +643,21 @@ async function uploadFile(filename, content, isFile, encrypt) {
             document.getElementById('fileContent').value = '';
             document.getElementById('fileInput').value = '';
             
+            console.log('[DEBUG] Upload successful, refreshing dashboard...');
+            
+            // Force immediate refresh after a short delay
             setTimeout(() => {
+                console.log('[DEBUG] Triggering dashboard refresh');
                 refreshDashboard();
-            }, 2000);
+            }, 1500);
         } else {
             progressContainer.innerHTML = '<div class="progress-label">✗ Upload failed</div>';
         }
     } catch (error) {
         console.error('Upload error:', error);
         progressContainer.innerHTML = '<div class="progress-label">✗ Connection error. Please ensure the client service is running.</div>';
+    } finally {
+        isUploading = false; // Clear upload flag
     }
 }
 
@@ -631,4 +708,5 @@ function hideModal(modalId) {
 }
 
 window.promoteUser = promoteUser;
+window.demoteUser = demoteUser;
 window.simulateFailure = simulateFailure;

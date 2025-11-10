@@ -13,16 +13,19 @@ from datetime import datetime, timedelta
 HEARTBEAT_TIMEOUT = 15  # seconds
 REPLICATION_FACTOR = 2
 CHUNK_SIZE = 1024 * 1024  # 1MB
-DATA_DIR = "/data/master"
-METADATA_FILE = f"{DATA_DIR}/chunks.json"
-USERS_FILE = f"{DATA_DIR}/users.json"
-SESSIONS_FILE = f"{DATA_DIR}/sessions.json"
 
-# Global state
+# Use project root directory for data storage
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(PROJECT_ROOT, "data", "master")
+METADATA_FILE = os.path.join(DATA_DIR, "chunks.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
+SERVERS_FILE = os.path.join(DATA_DIR, "servers.json")
+
 chunk_servers = {}
 metadata = {"files": {}, "chunks": {}}
 users = {}
-sessions = {}  # Store active sessions
+sessions = {}
 heartbeat_lock = threading.Lock()
 metadata_lock = threading.Lock()
 session_lock = threading.Lock()
@@ -36,33 +39,17 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 def load_data():
-    """Load metadata, users, and sessions from disk"""
-    global metadata, users, sessions
+    global metadata, users, sessions, chunk_servers
     
-    # Load metadata
     if os.path.exists(METADATA_FILE):
         with open(METADATA_FILE, 'r') as f:
             metadata = json.load(f)
     
-    # Load users or create defaults
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             users_data = json.load(f)
-            # Check if the data is in the new format (with password hash)
-            if "admin" in users_data and "password" in users_data["admin"]:
-                users.clear()
-                users.update(users_data)
-            else:
-                # This is the old format, so we need to hash the passwords
-                for username, password in users_data.items():
-                    users[username] = {
-                        "password": hashlib.sha256(password.encode()).hexdigest(),
-                        "role": "admin" if username == "admin" else "user",
-                        "created_by": "system"
-                    }
-                save_users()
+            users.update(users_data)
     else:
-        # Create a default admin user if the file doesn't exist
         users["admin"] = {
             "password": hashlib.sha256("admin123".encode()).hexdigest(),
             "role": "admin",
@@ -70,12 +57,22 @@ def load_data():
         }
         save_users()
     
-    # Load sessions
     if os.path.exists(SESSIONS_FILE):
         with open(SESSIONS_FILE, 'r') as f:
-            sessions = json.load(f)
-        # Clean expired sessions
+            sessions.update(json.load(f))
         clean_expired_sessions()
+    
+    if os.path.exists(SERVERS_FILE):
+        with open(SERVERS_FILE, 'r') as f:
+            chunk_servers.update(json.load(f))
+    else:
+        chunk_servers.clear()
+
+def save_servers():
+    """Persist chunk server states"""
+    with heartbeat_lock:
+        with open(SERVERS_FILE, 'w') as f:
+            json.dump(chunk_servers, f, indent=2)
 
 def save_metadata():
     """Save metadata to disk"""
@@ -105,7 +102,6 @@ def create_session(username, role):
             "role": role,
             "expiry": expiry
         }
-        # Save directly without acquiring lock again
         with open(SESSIONS_FILE, 'w') as f:
             json.dump(sessions, f, indent=2)
     
@@ -122,7 +118,6 @@ def validate_session(token):
         
         if datetime.now() > expiry:
             del sessions[token]
-            # Save directly without acquiring lock again
             with open(SESSIONS_FILE, 'w') as f:
                 json.dump(sessions, f, indent=2)
             return None
@@ -140,7 +135,6 @@ def clean_expired_sessions():
             del sessions[token]
         
         if expired:
-            # Save directly without acquiring lock again
             with open(SESSIONS_FILE, 'w') as f:
                 json.dump(sessions, f, indent=2)
 
@@ -167,37 +161,10 @@ def check_heartbeats():
                     if current_time - info["last_heartbeat"] > HEARTBEAT_TIMEOUT:
                         info["status"] = "failed"
                         print(f"[MASTER] Server {server_id} marked as FAILED")
-                        threading.Thread(target=re_replicate_chunks, args=(server_id,), daemon=True).start()
+                        # Removed re-replication thread
         
         # Clean expired sessions periodically
         clean_expired_sessions()
-
-def re_replicate_chunks(failed_server):
-    """Re-replicate chunks from a failed server"""
-    print(f"[MASTER] Starting re-replication for failed server: {failed_server}")
-    
-    with metadata_lock:
-        active_servers = [sid for sid, info in chunk_servers.items() 
-                         if info["status"] == "active"]
-        
-        if not active_servers:
-            print("[MASTER] No active servers for re-replication!")
-            return
-        
-        # Find chunks on failed server
-        for chunk_id, chunk_info in metadata["chunks"].items():
-            if failed_server in chunk_info["servers"]:
-                # Remove failed server
-                chunk_info["servers"].remove(failed_server)
-                
-                # Add to new server if below replication factor
-                if len(chunk_info["servers"]) < REPLICATION_FACTOR:
-                    new_server = active_servers[hash(chunk_id) % len(active_servers)]
-                    if new_server not in chunk_info["servers"]:
-                        chunk_info["servers"].append(new_server)
-                        print(f"[MASTER] Re-replicating {chunk_id} to {new_server}")
-        
-        save_metadata()
 
 class MasterHandler(BaseHTTPRequestHandler):
     def _set_headers(self, status=200):
@@ -249,6 +216,8 @@ class MasterHandler(BaseHTTPRequestHandler):
             self._handle_create_user(data)
         elif path == "/promote_user":
             self._handle_promote_user(data)
+        elif path == "/demote_user":
+            self._handle_demote_user(data)
         elif path == "/allocate_chunks":
             self._handle_allocate_chunks(data)
         elif path == "/register_chunk":
@@ -344,7 +313,6 @@ class MasterHandler(BaseHTTPRequestHandler):
             with session_lock:
                 if token in sessions:
                     del sessions[token]
-                    # Save directly without acquiring lock again
                     with open(SESSIONS_FILE, 'w') as f:
                         json.dump(sessions, f, indent=2)
         
@@ -366,7 +334,6 @@ class MasterHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"success": False, "error": "Username already exists"}).encode())
             return
         
-        # Create new user with default role
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         users[username] = {
             "password": password_hash,
@@ -429,6 +396,26 @@ class MasterHandler(BaseHTTPRequestHandler):
         self._set_headers()
         self.wfile.write(json.dumps({"success": True}).encode())
     
+    def _handle_demote_user(self, data):
+        """Demote manager to user"""
+        username = data.get("username")
+        
+        if username not in users:
+            self._set_headers(404)
+            self.wfile.write(json.dumps({"success": False, "error": "User not found"}).encode())
+            return
+        
+        if users[username]["role"] != "manager":
+            self._set_headers(400)
+            self.wfile.write(json.dumps({"success": False, "error": "User is not a manager"}).encode())
+            return
+        
+        users[username]["role"] = "user"
+        save_users()
+        
+        self._set_headers()
+        self.wfile.write(json.dumps({"success": True}).encode())
+    
     def _handle_allocate_chunks(self, data):
         """Allocate chunks for a file upload"""
         filename = data.get("filename")
@@ -464,26 +451,37 @@ class MasterHandler(BaseHTTPRequestHandler):
         filename = data.get("filename")
         chunk_id = data.get("chunk_id")
         servers = data.get("servers", [])
+        uploaded_by = data.get("uploaded_by", "unknown")
         
         with metadata_lock:
             if filename not in metadata["files"]:
                 metadata["files"][filename] = {
                     "chunks": [],
-                    "upload_time": datetime.now().isoformat()
+                    "upload_time": datetime.now().isoformat(),
+                    "uploaded_by": uploaded_by
                 }
+            else:
+                # Update uploaded_by even if file exists (in case it wasn't set)
+                if "uploaded_by" not in metadata["files"][filename]:
+                    metadata["files"][filename]["uploaded_by"] = uploaded_by
             
-            metadata["files"][filename]["chunks"].append(chunk_id)
+            # Only add chunk if not already present
+            if chunk_id not in metadata["files"][filename]["chunks"]:
+                metadata["files"][filename]["chunks"].append(chunk_id)
+            
             metadata["chunks"][chunk_id] = {
                 "servers": servers,
                 "filename": filename
             }
             save_metadata()
         
+        print(f"[MASTER] Registered chunk {chunk_id} for file {filename} by user {uploaded_by}")
+        
         self._set_headers()
         self.wfile.write(json.dumps({"success": True}).encode())
     
     def _handle_simulate_failure(self, data):
-        """Simulate server failure"""
+        """Simulate server failure (without re-replication)"""
         server_id = data.get("server_id")
         
         if server_id not in chunk_servers:
@@ -495,7 +493,8 @@ class MasterHandler(BaseHTTPRequestHandler):
             chunk_servers[server_id]["status"] = "failed"
             chunk_servers[server_id]["last_heartbeat"] = 0
         
-        threading.Thread(target=re_replicate_chunks, args=(server_id,), daemon=True).start()
+        # Removed re-replication call
+        print(f"[MASTER] Server {server_id} marked as failed (re-replication disabled)")
         
         self._set_headers()
         self.wfile.write(json.dumps({"success": True}).encode())
@@ -519,15 +518,32 @@ class MasterHandler(BaseHTTPRequestHandler):
         """Log HTTP requests"""
         print(f"[MASTER] {self.address_string()} - {format % args}")
 
+def autosave_state():
+    """Periodically save all runtime data"""
+    while True:
+        save_metadata()
+        save_users()
+        save_sessions()
+        save_servers()
+        time.sleep(60)
+
 def main():
     load_data()
+    
+    # Print storage location for user reference
+    print(f"[MASTER] Data directory: {DATA_DIR}")
+    print(f"[MASTER] Metadata file: {METADATA_FILE}")
     
     # Start heartbeat monitor
     threading.Thread(target=check_heartbeats, daemon=True).start()
     
+    # Start autosave thread
+    threading.Thread(target=autosave_state, daemon=True).start()
+    
     # Start HTTP server with threading support
     server = ThreadedHTTPServer(('0.0.0.0', 8000), MasterHandler)
     print("[MASTER] Master Node started on port 8000 (threaded)")
+    print("[MASTER] Re-replication disabled")
     server.serve_forever()
 
 if __name__ == "__main__":
