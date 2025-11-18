@@ -98,11 +98,19 @@ def upload_file(filename, content, encrypt=True, uploaded_by="unknown"):
         success = False
         for server_id in servers:
             try:
+                # Map server IDs to Docker service names
+                hostname_map = {
+                    "chunk_server_1": "chunk1",
+                    "chunk_server_2": "chunk2",
+                    "chunk_server_3": "chunk3"
+                }
                 port_map = {
                     "chunk_server_1": 9001,
                     "chunk_server_2": 9002,
                     "chunk_server_3": 9003
                 }
+                
+                hostname = hostname_map.get(server_id, server_id)
                 port = port_map.get(server_id, 9001)
                 
                 upload_payload = {
@@ -112,7 +120,7 @@ def upload_file(filename, content, encrypt=True, uploaded_by="unknown"):
                     "filename": filename
                 }
                 
-                server_url = f"http://{server_id}:{port}/upload"
+                server_url = f"http://{hostname}:{port}/upload"
                 print(f"[CLIENT] Uploading to {server_url}...")
                 
                 req = urllib.request.Request(

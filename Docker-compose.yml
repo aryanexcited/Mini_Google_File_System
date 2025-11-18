@@ -1,109 +1,71 @@
+version: "3.9"
+
 services:
-  # Master Node
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.react
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - master
+      - client
+
   master:
-    build: .
-    container_name: gfs_master
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python3 master_node.py
+    volumes:
+      - master_data:/data/master
     ports:
       - "8000:8000"
-    volumes:
-      - ./data/master:/data/master  # Changed to bind mount
-    networks:
-      - gfs_network
-    restart: unless-stopped
-    command: python3 -u /app/backend/master_node.py
 
-  # Chunk Servers
-  chunk_server_1:
-    build: .
-    container_name: gfs_chunk_1
+  client:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python3 client_script.py
     ports:
-      - "9001:9001"
-    volumes:
-      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
-    networks:
-      - gfs_network
-    restart: unless-stopped
+      - "8001:8001"
+
+  chunk1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       - SERVER_ID=chunk_server_1
       - SERVER_PORT=9001
-    depends_on:
-      master:
-        condition: service_started
-    command: python3 -u /app/backend/chunk_server.py
-
-  chunk_server_2:
-    build: .
-    container_name: gfs_chunk_2
+    command: python3 chunk_server.py
     ports:
-      - "9002:9002"
-    volumes:
-      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
-    networks:
-      - gfs_network
-    restart: unless-stopped
+      - "9001:9001"
+
+  chunk2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       - SERVER_ID=chunk_server_2
       - SERVER_PORT=9002
-    depends_on:
-      master:
-        condition: service_started
-    command: python3 -u /app/backend/chunk_server.py
-
-  chunk_server_3:
-    build: .
-    container_name: gfs_chunk_3
+    command: python3 chunk_server.py
     ports:
-      - "9003:9003"
-    volumes:
-      - ./data/chunks:/data/chunks  # Changed to bind mount - all servers share
-    networks:
-      - gfs_network
-    restart: unless-stopped
+      - "9002:9002"
+
+  chunk3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     environment:
       - SERVER_ID=chunk_server_3
       - SERVER_PORT=9003
-    depends_on:
-      master:
-        condition: service_started
-    command: python3 -u /app/backend/chunk_server.py
-
-  # Client Service
-  client:
-    build: .
-    container_name: gfs_client
+    command: python3 chunk_server.py
     ports:
-      - "8001:8001"
-    networks:
-      - gfs_network
-    restart: unless-stopped
-    depends_on:
-      master:
-        condition: service_started
-      chunk_server_1:
-        condition: service_started
-      chunk_server_2:
-        condition: service_started
-      chunk_server_3:
-        condition: service_started
-    command: python3 -u /app/backend/client_script.py
+      - "9003:9003"
 
-  # Web Interface (static)
-  web:
-    image: nginx:alpine
-    container_name: gfs_web
-    ports:
-      - "8080:80"
-    volumes:
-      - ./web:/usr/share/nginx/html:ro
-    networks:
-      - gfs_network
-    restart: unless-stopped
-    depends_on:
-      master:
-        condition: service_started
-      client:
-        condition: service_started
-
-networks:
-  gfs_network:
-    driver: bridge
+volumes:
+  master_data:

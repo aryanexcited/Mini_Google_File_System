@@ -123,7 +123,6 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
                 print(f"[{SERVER_ID}] Stored chunk: {chunk_id} in {category}/")
                 
             else:
-
                 body = self.rfile.read(content_length).decode()
                 parts = body.split('&')
                 chunk_id = None
@@ -162,7 +161,6 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode())
     
     def _handle_download(self):
-
         chunk_id = self.path.split('/')[-1]
         
         # Search in all categories
@@ -196,7 +194,6 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
     
     def _handle_health(self):
         """Health check endpoint"""
-        
         chunk_counts = {}
         total_chunks = 0
         
