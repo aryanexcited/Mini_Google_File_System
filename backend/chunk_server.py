@@ -93,6 +93,7 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
         """Handle chunk upload with binary support"""
         content_length = int(self.headers.get('Content-Length', 0))
         content_type = self.headers.get('Content-Type', '')
+        category = 'text'
         
         try:
             if 'application/json' in content_type:
@@ -120,7 +121,7 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
                     with open(chunk_path, 'w') as f:
                         f.write(chunk_data_b64)
                 
-                print(f"[{SERVER_ID}] Stored chunk: {chunk_id} in {category}/")
+                print(f"[{SERVER_ID}] Stored chunk: {chunk_id} in {category}/ at {chunk_path}")
                 
             else:
                 body = self.rfile.read(content_length).decode()
@@ -145,14 +146,14 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
                 with open(chunk_path, 'w') as f:
                     f.write(chunk_data or "")
                 
-                print(f"[{SERVER_ID}] Stored chunk: {chunk_id}")
+                print(f"[{SERVER_ID}] Stored chunk: {chunk_id} at {chunk_path}")
             
             self._set_headers()
             self.wfile.write(json.dumps({
                 "success": True,
                 "chunk_id": chunk_id,
                 "server_id": SERVER_ID,
-                "category": category if 'filename' in locals() else 'text'
+                "category": category
             }).encode())
         
         except Exception as e:
@@ -161,36 +162,40 @@ class ChunkServerHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode())
     
     def _handle_download(self):
-        chunk_id = self.path.split('/')[-1]
+        import urllib.parse
+        chunk_id = urllib.parse.unquote(self.path.split('/')[-1])
+        print(f"[{SERVER_ID}] Download request for: {chunk_id}")
         
-        # Search in all categories
         chunk_path = None
         for category in ['text', 'images', 'documents', 'other']:
             test_path = os.path.join(DATA_DIR, category, chunk_id)
+            print(f"[{SERVER_ID}] Checking: {test_path}")
             if os.path.exists(test_path):
                 chunk_path = test_path
+                print(f"[{SERVER_ID}] Found at: {chunk_path}")
                 break
         
         if not chunk_path:
+            print(f"[{SERVER_ID}] Chunk not found: {chunk_id}")
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Chunk not found"}).encode())
             return
         
         try:
-            with open(chunk_path, 'r') as f:
-                data = f.read()
-            is_binary = False
-        except:
             with open(chunk_path, 'rb') as f:
                 data = base64.b64encode(f.read()).decode()
-            is_binary = True
-        
-        self._set_headers()
-        self.wfile.write(json.dumps({
-            "chunk_id": chunk_id,
-            "data": data,
-            "is_binary": is_binary
-        }).encode())
+            print(f"[{SERVER_ID}] Successfully read chunk: {len(data)} bytes (base64)")
+            
+            self._set_headers()
+            self.wfile.write(json.dumps({
+                "chunk_id": chunk_id,
+                "data": data,
+                "is_binary": True
+            }).encode())
+        except Exception as e:
+            print(f"[{SERVER_ID}] Error reading chunk: {e}")
+            self._set_headers(500)
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
     
     def _handle_health(self):
         """Health check endpoint"""

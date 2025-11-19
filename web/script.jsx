@@ -298,20 +298,27 @@ function DashboardScreen({ user, role, token, onLogout }) {
     try {
       const response = await fetch(`${MASTER_URL}/download/${filename}`);
       const data = await response.json();
-      
-      if (data.success) {
-        const blob = new Blob([atob(data.content)]);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
+      if (data.error) {
         alert('Download failed: ' + data.error);
+        return;
       }
+      let fileBlob;
+      if (data.is_binary) {
+        const binary = Uint8Array.from(atob(data.data), c => c.charCodeAt(0));
+        fileBlob = new Blob([binary]);
+      } else {
+        fileBlob = new Blob([data.data], { type: 'text/plain' });
+      }
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(fileBlob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+      }, 150);
     } catch (err) {
-      console.error('Download error:', err);
       alert('Download failed: ' + err.message);
     }
   };
@@ -399,6 +406,7 @@ function UserDashboard({ status, user, onUpload, onDownload, onDelete, uploadPro
   const [encrypt, setEncrypt] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
   const userFiles = Object.entries(status.files).filter(([, info]) => info.uploaded_by === user);
@@ -409,22 +417,28 @@ function UserDashboard({ status, user, onUpload, onDownload, onDelete, uploadPro
   const activeServers = Object.values(status.servers).filter(s => s.status === 'active').length;
   const totalServers = Object.keys(status.servers).length;
 
-  const handleManualUpload = () => {
-    if (!filename || !content) {
-      alert('Please enter filename and content');
-      return;
+  const handleManualUpload = async () => {
+    if (selectedFiles.length > 0) {
+      for (const file of selectedFiles) {
+        await onUpload(file.name, file, true, encrypt);
+      }
+      setSelectedFiles([]);
+      setContent('');
+    } else {
+      if (!filename || !content) {
+        alert('Please enter filename and content');
+        return;
+      }
+      await onUpload(filename, content, false, encrypt);
+      setFilename('');
+      setContent('');
     }
-    onUpload(filename, content, false, encrypt);
-    setFilename('');
-    setContent('');
   };
 
   const handleFileSelect = (e) => {
     const files = e.target.files;
     if (files.length > 0) {
-      Array.from(files).forEach(file => {
-        onUpload(file.name, file, true, encrypt);
-      });
+      setSelectedFiles(Array.from(files));
     }
   };
 
@@ -433,9 +447,7 @@ function UserDashboard({ status, user, onUpload, onDownload, onDelete, uploadPro
     setIsDragging(false);
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      Array.from(files).forEach(file => {
-        onUpload(file.name, file, true, encrypt);
-      });
+      setSelectedFiles(Array.from(files));
     }
   };
 
@@ -481,6 +493,16 @@ function UserDashboard({ status, user, onUpload, onDownload, onDelete, uploadPro
               multiple
               onChange={handleFileSelect}
             />
+            {selectedFiles.length > 0 && (
+              <div style={{ marginTop: '10px', color: '#333' }}>
+                <b>Selected files:</b>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  {selectedFiles.map((file, idx) => (
+                    <li key={idx}>{file.name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div style={{ textAlign: 'center', color: '#666', margin: '10px 0' }}>OR</div>

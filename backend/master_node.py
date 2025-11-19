@@ -139,6 +139,7 @@ class MasterHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         try:
+            print(f"[MASTER] GET request: {self.path}")
             if self.path == "/status":
                 self._handle_status()
             elif self.path == "/users":
@@ -146,6 +147,7 @@ class MasterHandler(BaseHTTPRequestHandler):
             elif self.path.startswith("/download/"):
                 self._handle_download()
             else:
+                print(f"[MASTER] Path not matched: {self.path}")
                 self._set_headers(404)
                 self.wfile.write(json.dumps({"error": "Not found"}).encode())
         except Exception as e:
@@ -454,7 +456,9 @@ class MasterHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({"success": True}).encode())
     
     def _handle_download(self):
-        filename = self.path.split('/')[-1]
+        import urllib.parse
+        filename = urllib.parse.unquote(self.path.split('/')[-1])
+        print(f"[MASTER] Download request for: {filename}")
         
         with metadata_lock:
             if filename not in metadata["files"]:
@@ -481,9 +485,17 @@ class MasterHandler(BaseHTTPRequestHandler):
                     if server_info.get("status") != "active":
                         continue
                     
+                    hostname_map = {
+                        "chunk_server_1": "chunk1",
+                        "chunk_server_2": "chunk2",
+                        "chunk_server_3": "chunk3"
+                    }
+                    hostname = hostname_map.get(server_id, server_id)
                     port = server_info.get("port", 9001)
-                    url = f"http://{server_id}:{port}/download/{chunk_id}"
+                    encoded_chunk_id = urllib.parse.quote(chunk_id)
+                    url = f"http://{hostname}:{port}/download/{encoded_chunk_id}"
                     
+                    print(f"[MASTER] Downloading {chunk_id} from {url}")
                     req = urllib.request.Request(url)
                     with urllib.request.urlopen(req, timeout=10) as response:
                         result = json.loads(response.read().decode())
@@ -495,9 +507,12 @@ class MasterHandler(BaseHTTPRequestHandler):
                         else:
                             chunk_data = chunk_data.encode()
                         
+                        print(f"[MASTER] Successfully downloaded {chunk_id}")
                         break
                 except Exception as e:
                     print(f"[MASTER] Failed to download {chunk_id} from {server_id}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             
             if chunk_data is None:
@@ -518,7 +533,8 @@ class MasterHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps({
             "success": True,
             "filename": filename,
-            "content": file_content_b64
+            "data": file_content_b64,
+            "is_binary": True
         }).encode())
     
     def _handle_delete_file(self, data):

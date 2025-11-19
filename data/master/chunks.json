@@ -1,0 +1,93 @@
+{
+  "files": {
+    "Screenshot 2025-05-06 204054.png": {
+      "chunks": [
+        "Screenshot 2025-05-06 204054.png_chunk_0_66219251b2996ed0",
+        "Screenshot 2025-05-06 204054.png_chunk_1_6bd41116491681a1",
+        "Screenshot 2025-05-06 204054.png_chunk_0_9287fca1ee441a47",
+        "Screenshot 2025-05-06 204054.png_chunk_1_6e34964f0be80363"
+      ],
+      "upload_time": 1763527429.5466845,
+      "uploaded_by": "user1"
+    },
+    "Screenshot 2025-09-18 220426.png": {
+      "chunks": [
+        "Screenshot 2025-09-18 220426.png_chunk_0_2b441291da7427e0"
+      ],
+      "upload_time": 1763537983.0623991,
+      "uploaded_by": "user1"
+    },
+    "Screenshot 2025-07-01 222431.png": {
+      "chunks": [
+        "Screenshot 2025-07-01 222431.png_chunk_0_565e024e4f64921f"
+      ],
+      "upload_time": 1763538071.9182615,
+      "uploaded_by": "user1"
+    },
+    "Screenshot 2025-09-18 222817.png": {
+      "chunks": [
+        "Screenshot 2025-09-18 222817.png_chunk_0_565dfb755d8b6534"
+      ],
+      "upload_time": 1763539086.8042471,
+      "uploaded_by": "user1"
+    }
+  },
+  "chunks": {
+    "Screenshot 2025-05-06 204054.png_chunk_0_66219251b2996ed0": {
+      "filename": "Screenshot 2025-05-06 204054.png",
+      "servers": [
+        "chunk_server_2",
+        "chunk_server_3"
+      ],
+      "created_at": 1763527429.5466876
+    },
+    "Screenshot 2025-05-06 204054.png_chunk_1_6bd41116491681a1": {
+      "filename": "Screenshot 2025-05-06 204054.png",
+      "servers": [
+        "chunk_server_1",
+        "chunk_server_3"
+      ],
+      "created_at": 1763527430.0885103
+    },
+    "Screenshot 2025-05-06 204054.png_chunk_0_9287fca1ee441a47": {
+      "filename": "Screenshot 2025-05-06 204054.png",
+      "servers": [
+        "chunk_server_3",
+        "chunk_server_1"
+      ],
+      "created_at": 1763529099.5656261
+    },
+    "Screenshot 2025-05-06 204054.png_chunk_1_6e34964f0be80363": {
+      "filename": "Screenshot 2025-05-06 204054.png",
+      "servers": [
+        "chunk_server_3",
+        "chunk_server_2"
+      ],
+      "created_at": 1763529100.1109695
+    },
+    "Screenshot 2025-09-18 220426.png_chunk_0_2b441291da7427e0": {
+      "filename": "Screenshot 2025-09-18 220426.png",
+      "servers": [
+        "chunk_server_2",
+        "chunk_server_3"
+      ],
+      "created_at": 1763537983.0624022
+    },
+    "Screenshot 2025-07-01 222431.png_chunk_0_565e024e4f64921f": {
+      "filename": "Screenshot 2025-07-01 222431.png",
+      "servers": [
+        "chunk_server_2",
+        "chunk_server_1"
+      ],
+      "created_at": 1763538071.9182649
+    },
+    "Screenshot 2025-09-18 222817.png_chunk_0_565dfb755d8b6534": {
+      "filename": "Screenshot 2025-09-18 222817.png",
+      "servers": [
+        "chunk_server_1",
+        "chunk_server_2"
+      ],
+      "created_at": 1763539086.80425
+    }
+  }
+}

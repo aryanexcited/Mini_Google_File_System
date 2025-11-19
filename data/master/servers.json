@@ -1,0 +1,20 @@
+{
+  "chunk_server_3": {
+    "host": "chunk_server_3",
+    "port": 9003,
+    "last_heartbeat": 1763539628.3051474,
+    "status": "active"
+  },
+  "chunk_server_2": {
+    "host": "chunk_server_2",
+    "port": 9002,
+    "last_heartbeat": 1763539628.4331946,
+    "status": "active"
+  },
+  "chunk_server_1": {
+    "host": "chunk_server_1",
+    "port": 9001,
+    "last_heartbeat": 1763539628.4269202,
+    "status": "active"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "admin": {
+    "password": "admin123",
+    "role": "admin",
+    "created_by": "system"
+  },
+  "user1": {
+    "password": "user123",
+    "role": "user",
+    "created_by": "self"
+  },
+  "user2": {
+    "password": "e606e38b0d8c19b24cf0ee3808183162ea7cd63ff7912dbb22b5e803286b4446",
+    "role": "user",
+    "created_by": "self"
+  }
+}

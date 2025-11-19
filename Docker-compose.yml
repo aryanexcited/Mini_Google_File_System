@@ -22,7 +22,7 @@ services:
       dockerfile: Dockerfile
     command: python3 master_node.py
     volumes:
-      - master_data:/data/master
+      - ./data/master:/data/master
     ports:
       - "8000:8000"
 
@@ -42,6 +42,8 @@ services:
       - SERVER_ID=chunk_server_1
       - SERVER_PORT=9001
     command: python3 chunk_server.py
+    volumes:
+      - ./data/chunk1:/data/chunks
     ports:
       - "9001:9001"
 
@@ -53,6 +55,8 @@ services:
       - SERVER_ID=chunk_server_2
       - SERVER_PORT=9002
     command: python3 chunk_server.py
+    volumes:
+      - ./data/chunk2:/data/chunks
     ports:
       - "9002:9002"
 
@@ -64,8 +68,8 @@ services:
       - SERVER_ID=chunk_server_3
       - SERVER_PORT=9003
     command: python3 chunk_server.py
+    volumes:
+      - ./data/chunk3:/data/chunks
     ports:
       - "9003:9003"
 
-volumes:
-  master_data:
